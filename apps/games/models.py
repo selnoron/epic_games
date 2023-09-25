@@ -31,6 +31,5 @@ class Game(models.Model):
         verbose_name = 'игра'
         verbose_name_plural = 'игры'
 
-
-# Создать форму для создания игры и редактирования игры
-# Реализовать создание и удаление игры
+    def __str__(self) -> str:
+        return f'{self.name} | {self.price:.2f}$'
