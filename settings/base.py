@@ -3,27 +3,26 @@ import sys
 import os
 from decouple import config
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(BASE_DIR)
 sys.path.append(os.path.join(BASE_DIR, 'apps'))
 
-SECRET_KEY = config("SECRET_KEY", str)
-# 'django-insecure-txkvs8ei!c&=hr)+n+%#c!#e8pjz8za9-!%*kx!li1z=4w)=1&'
+SECRET_KEY = config('SECRET_KEY', str)
 
-DEBUG = config("DEBUG", bool)
+DEBUG = config('DEBUG', bool)
 
 ALLOWED_HOSTS = []
 
 DJANGO_APPS = [
-    "corsheaders",
+    'corsheaders',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework'
+
+    'rest_framework',
 ]
 PROJECT_APPS = [
     'games.apps.GamesConfig',
@@ -33,7 +32,7 @@ PROJECT_APPS = [
 INSTALLED_APPS = DJANGO_APPS + PROJECT_APPS
 
 MIDDLEWARE = [
-    "corsheaders.middleware.CorsMiddleware",
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
