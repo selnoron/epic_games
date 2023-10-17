@@ -1,7 +1,12 @@
-from pathlib import Path
-import sys
+# Python
 import os
+import sys
+from pathlib import Path
+
+# Third party
 from decouple import config
+
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.append(BASE_DIR)
@@ -11,7 +16,7 @@ SECRET_KEY = config('SECRET_KEY', str)
 
 DEBUG = config('DEBUG', bool)
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['*']
 
 DJANGO_APPS = [
     'corsheaders',
@@ -21,7 +26,7 @@ DJANGO_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-
+    'rest_framework_simplejwt',
     'rest_framework',
 ]
 PROJECT_APPS = [
@@ -97,3 +102,12 @@ USE_TZ = True
 STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    )
+}
+
+
+from settings.jwt import SIMPLE_JWT

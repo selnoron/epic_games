@@ -1,82 +1,162 @@
-from django.shortcuts import render
-from rest_framework import viewsets
+# Python
+from typing import Optional
+
+# DRF
 from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework.validators import ValidationError
-from rest_framework import generics
-
-from games.models import Game, BuyGame
-from games.serializers import (
-    GameSerializer, 
-    GameCreateSerializer,
-    BuyGameSerializer
+from rest_framework.response import Response as JsonResponse
+from rest_framework.viewsets import ViewSet
+from rest_framework.permissions import (
+    IsAuthenticated
 )
+from rest_framework.decorators import action
+
+# First party
+from abstracts.mixins import (
+    ObjectMixin,
+    ResponseMixin
+)
+from games.models import Game, Subscripe
+from games.serializers import (
+    GameCreateSerializer,
+    GameSerializer
+)
+import datetime
 
 
-class GameViewSet(viewsets.ViewSet):
+class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
     """
     ViewSet for Game model.
     """
-
-    queryset = Game.objects.count_game()
+    queryset = Game.objects.all()
+    subscripes = Subscripe.objects.all()
+    permission_classes = [IsAuthenticated]
 
     def list(
         self,
         request: Request,
         *args: tuple,
         **kwargs: dict
-    ) -> Response:
-        serializer: GameSerializer = GameSerializer(
-            instance=self.queryset, many=True
-        )
-        return Response(
-            data=serializer.data
-        )
-    
-    def retrieve(
-        self, 
-        request: Request, 
-        pk: int = None
-    ) -> Response:
-        try:
-            game = self.queryset.get(pk=pk)
-        except Game.DoesNotExist:
-            raise ValidationError('Object not found!', code=404)
+    ) -> JsonResponse:
+        serializer: GameSerializer = \
+            GameSerializer(
+                instance=self.queryset,
+                many=True
+            )
+        return self.json_response(serializer.data)
         
-        serializer = GameSerializer(instance=game)
-        return Response(data=serializer.data)
+    def retrieve(
+        self,
+        request: Request,
+        pk: Optional[int] = None
+    ) -> JsonResponse:
+        game = self.get_object(self.queryset, pk)
+        serializer: GameSerializer = \
+            GameSerializer(instance=game)
+
+        return self.json_response(serializer.data)
 
     def create(
         self,
         request: Request,
         *args: tuple,
         **kwargs: dict
-    ) -> Response:
-        serializer = GameCreateSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        game: Game = serializer.save()
-        return Response(
-            data={
-                "status": "ok",
-                "message": f"Game {game.name} is created! Id: {game.pk}"
-            }
+    ) -> JsonResponse:
+        serializer: GameCreateSerializer = \
+            GameCreateSerializer(
+                data=request.data
+            )
+        serializer.is_valid(
+            raise_exception=True
         )
+        game: Game = serializer.save()
 
+        return self.json_response(f'{game.name} is created. ID: {game.id}')
 
-class BuyGameView(generics.CreateAPIView):
-    queryset = BuyGame.objects.all()
-    serializer_class = BuyGameSerializer
+    def update(
+        self,
+        request: Request,
+        pk: str
+    ) -> JsonResponse:
+        game = self.get_object(self.queryset, pk)
+        serializer: GameSerializer = \
+            GameSerializer(
+                instance=game,
+                data=request.data
+            )
+        if not serializer.is_valid():
+            return self.json_response(
+                f'{game.name} wasn\'t updated', 'Warning'
+            )
+        serializer.save()
+        return self.json_response(f'{game.name} was updated')
 
-    def perform_create(self, serializer):
-        game = serializer.validated_data['game']
+    def partial_update(
+        self,
+        request: Request,
+        pk: str
+    ) -> JsonResponse:
+        game = self.get_object(self.queryset, pk)
+        serializer: GameSerializer = \
+            GameSerializer(
+                instance=game,
+                data=request.data,
+                partial=True
+            )
+        if not serializer.is_valid():
+            return self.json_response(
+                f'{game.name} wasn\'t partially-updated', 'Warning'
+            )
+        serializer.save()
+        return self.json_response(f'{game.name} was partially-updated')
+
+    def destroy(
+        self,
+        request: Request,
+        pk: str
+    ) -> JsonResponse:
+        # TODO: мы будем проставлять
+        #       ей статус 'datetime_deleted'
+        #
+        game = self.get_object(self.queryset, pk)
+        name: str = game.name
+        game.delete()
+
+        return self.json_response(f'{name} was deleted')
+    
+    @action(
+        methods=['POST'],
+        detail=False,
+        url_path='sub/(?P<pk>[^/.]+)'
+    )
+    def subscribe(self, request: Request, pk: int = None) -> JsonResponse:
+        game = self.get_object(
+            queryset=Game.objects.all(),
+            obj_id=pk
+        )
         try:
-            if game.count > 0:
-                game.count -= 1
-                game.save()
-                return Response(
-                    data={
-                        'message': f'Game {game.name} is bought.'
+            sub = self.subscripes.get(game=game)
+            date_obj = sub.datetime_finished
+            datetime_obj = datetime.datetime(date_obj.year, date_obj.month, date_obj.day)
+            return self.json_response(
+                data={
+                    "message": {
+                        "error": "already exists",
+                        "finish": datetime_obj.timestamp()
                     }
-                )
-        except:
-            raise ValidationError(f'Game {game.name} is not bought!', code=400)
+                }
+            )
+        except Subscripe.DoesNotExist:
+            sub = Subscripe.objects.create(
+                user=request.user,
+                is_active=True,
+                game=game
+            )
+            return self.json_response(
+                data={
+                    "message": {
+                        "game_id": game.id,
+                        "subscribe_id": sub.id,
+                        "date_finished": sub.datetime_finished
+                    }
+                }
+            )
