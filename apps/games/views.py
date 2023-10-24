@@ -21,6 +21,7 @@ from games.serializers import (
     GameSerializer
 )
 import datetime
+from games.tasks import do_test
 
 
 class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
@@ -160,3 +161,13 @@ class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
                     }
                 }
             )
+        
+    
+    @action(
+        methods=['GET'], detail=False, url_path='sub/check/(?P<pk>[^/.]+)'
+    )
+    def check_subscribe(self, request:Request, pk: int = None):
+        do_test()
+        return self.json_response(
+            data={"message": 'okey'}
+        )
