@@ -1,8 +1,10 @@
+# Python
+import datetime
+
 # Django
+from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator
 from django.db import models
-from django.contrib.auth.models import User
-import datetime
 
 
 class Game(models.Model):
@@ -28,6 +30,10 @@ class Game(models.Model):
         verbose_name='рейтинг',
         max_length=5
     )
+    is_hidden: bool = models.BooleanField(
+        verbose_name='скрыта ли',
+        default=False
+    )
 
     class Meta:
         ordering = ('-id',)
@@ -36,9 +42,9 @@ class Game(models.Model):
 
     def __str__(self) -> str:
         return f'{self.name} | {self.price:.2f}$'
+    
 
-
-class Subscripe(models.Model):
+class Subscribe(models.Model):
     game: Game = models.ForeignKey(
         to=Game,
         related_name='subs',
@@ -61,3 +67,7 @@ class Subscripe(models.Model):
         ordering = ('id',)
         verbose_name = 'Подписка'
         verbose_name_plural = 'Подписки'
+
+
+# Создать форму для создания игры и редактирования игры
+# Реализовать создание и удаление игры

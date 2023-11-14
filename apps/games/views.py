@@ -1,36 +1,50 @@
 # Python
 from typing import Optional
+from datetime import datetime, date
 
 # DRF
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response as JsonResponse
 from rest_framework.viewsets import ViewSet
-from rest_framework.permissions import (
-    IsAuthenticated
-)
-from rest_framework.decorators import action
+
+# Django
+from django.core.exceptions import ValidationError
+from django.db.models import query
 
 # First party
 from abstracts.mixins import (
     ObjectMixin,
     ResponseMixin
 )
-from games.models import Game, Subscripe
+from games.models import (
+    Game,
+    Subscribe
+)
+from games.tasks import (
+    cancel_subcribe,
+    test_worker,
+    games_price_updater,
+    game_price_updater
+)
 from games.serializers import (
     GameCreateSerializer,
     GameSerializer
 )
-import datetime
-from games.tasks import do_test
+
+# Local
+from .permissions import GamePermission
 
 
 class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
     """
     ViewSet for Game model.
     """
+    # permission_classes = (
+    #     GamePermission,
+    # )
     queryset = Game.objects.all()
-    subscripes = Subscripe.objects.all()
-    permission_classes = [IsAuthenticated]
 
     def list(
         self,
@@ -44,7 +58,7 @@ class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
                 many=True
             )
         return self.json_response(serializer.data)
-        
+
     def retrieve(
         self,
         request: Request,
@@ -123,51 +137,119 @@ class GameViewSet(ResponseMixin, ObjectMixin, ViewSet):
         game.delete()
 
         return self.json_response(f'{name} was deleted')
-    
+
+    @action(
+        methods=['POST'],
+        detail=False
+    )
+    def show_hidden_games(self, request: Request) -> JsonResponse:
+        hidden_games: query.QuerySet = \
+            Game.objects.filter(is_hidden=True)
+
+        serializer: GameSerializer = \
+            GameSerializer(
+                instance=hidden_games,
+                many=True
+            )
+        return self.json_response(serializer.data)
+
     @action(
         methods=['POST'],
         detail=False,
-        url_path='sub/(?P<pk>[^/.]+)'
+        url_path='sub/game/(?P<pk>[^/.]+)'
     )
-    def subscribe(self, request: Request, pk: int = None) -> JsonResponse:
+    def subscribe(
+        self, 
+        request: Request, 
+        pk: int = None
+    ) -> JsonResponse:
+        CANCEL_TIMEOUT_30_DAYS = 30 * 24 * 60 * 60
+
         game = self.get_object(
             queryset=Game.objects.all(),
             obj_id=pk
         )
-        try:
-            sub = self.subscripes.get(game=game)
-            date_obj = sub.datetime_finished
-            datetime_obj = datetime.datetime(date_obj.year, date_obj.month, date_obj.day)
-            return self.json_response(
-                data={
-                    "message": {
-                        "error": "already exists",
-                        "finish": datetime_obj.timestamp()
-                    }
+        sub = Subscribe.objects.create(
+            user=request.user,
+            is_active=True,
+            game=game
+        )
+        cancel_subcribe.apply_async(
+            kwargs={
+                'subcribe_id': sub.id
+            },
+            countdown=CANCEL_TIMEOUT_30_DAYS
+        )
+        return self.json_response(
+            data={
+                'message': {
+                    'game_id': game.id,
+                    'subscribe_id': sub.id,
+                    'date_finished': sub.datetime_finished
                 }
-            )
-        except Subscripe.DoesNotExist:
-            sub = Subscripe.objects.create(
-                user=request.user,
-                is_active=True,
-                game=game
-            )
-            return self.json_response(
-                data={
-                    "message": {
-                        "game_id": game.id,
-                        "subscribe_id": sub.id,
-                        "date_finished": sub.datetime_finished
-                    }
-                }
-            )
-        
+            }
+        )
+
+    @action(
+        methods=['GET'],
+        detail=False,
+        url_path='sub/check/(?P<pk>[^/.]+)'
+    )
+    def check_subcribe(
+        self, 
+        request: Request, 
+        pk: int = None
+    ) -> JsonResponse:
+        test_worker.apply_async(
+            kwargs={'game_id': pk},
+            countdown=10
+        )
+        return self.json_response(
+            data={'message': 'ok'}
+        )
     
     @action(
-        methods=['GET'], detail=False, url_path='sub/check/(?P<pk>[^/.]+)'
+        methods=['GET'],
+        detail=False,
+        url_path='update_games_prices/(?P<pk>[^/.]+)'
     )
-    def check_subscribe(self, request:Request, pk: int = None):
-        do_test()
-        return self.json_response(
-            data={"message": 'okey'}
+    def update_games_prices(
+        self, 
+        request: Request, 
+        pk: int = None
+    ) -> JsonResponse:
+        game = self.get_object(
+            queryset=Game.objects.all(),
+            obj_id=pk
         )
+        rate = game.rate
+
+        games_price_updater.delay(rate)
+
+        return self.json_response(
+            data={'message': 'Updating game prices'}
+        )
+    
+    @action(
+    methods=['GET'],
+    detail=False,
+    url_path='update_game_price/(?P<pk>[^/.]+)'
+    )
+    def update_game_price(
+        self, 
+        request: Request, 
+        pk=None
+    ) -> JsonResponse:
+        game = self.get_object(
+            queryset=Game.objects.all(),
+            obj_id=pk
+        )
+        rate = game.rate
+
+        game_price_updater.delay(game.id, rate)
+
+        return self.json_response(
+            data={'message': f'Updating game prices for game {game.name}'}
+        )
+
+
